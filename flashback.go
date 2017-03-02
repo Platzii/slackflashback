@@ -14,8 +14,24 @@ func main() {
 		return
 	}
 
+	fmt.Println("Channels:")
+
 	for _, group := range groups {
 		fmt.Printf("ID: %s, Name: %s\n", group.ID, group.Name)
+	}
+
+	var users []slack.User
+
+	users, err = slackApi.GetUsers()
+
+	if err != nil {
+		fmt.Printf("%s\n", err)
+	}
+
+	fmt.Println("Users:")
+
+	for _, user := range users {
+		fmt.Printf("ID: %s, Name: %s\n", user.ID, user.Name)
 	}
 }
 
