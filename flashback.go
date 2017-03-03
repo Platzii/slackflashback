@@ -2,8 +2,12 @@ package main
 
 import (
 	"fmt"
+	"time"
+	"strconv"
 	"github.com/nlopes/slack"
 )
+
+var botId string
 
 func main() {
 	slackApi := slack.New(getSlackToken())
@@ -28,13 +32,36 @@ func main() {
 		fmt.Printf("%s\n", err)
 	}
 
-	fmt.Println("Users:")
-
 	for _, user := range users {
-		fmt.Printf("ID: %s, Name: %s\n", user.ID, user.Name)
+		if user.Name == getBotName() {
+			botId = user.ID
+			fmt.Printf("Bot id: %s\n", botId)
+		}
+	}
+
+	if botId == "" {
+		fmt.Println("Bot id not found")
+		return
+	}
+
+	rtm := slackApi.NewRTM()
+
+	go rtm.ManageConnection()
+
+	for msg := range rtm.IncomingEvents {
+		switch msgData := msg.Data.(type) {
+		case *slack.MessageEvent:
+			timestamp, _ := strconv.ParseFloat(msgData.Timestamp, 32)
+			fmt.Printf("%s [user:%s|channel:%s] %s\n", time.Unix(int64(timestamp), 0), msgData.User, msgData.Channel, msgData.Msg.Text)
+			break
+		}
 	}
 }
 
 func getSlackToken() string {
 	return "xoxb-114019759923-fSW5MUF2u8XECr9Ajt8YQ4p1"
+}
+
+func getBotName() string {
+	return "inetcobot"
 }
