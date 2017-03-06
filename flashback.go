@@ -19,6 +19,7 @@ var (
 var (
 	botId    string
 	slackApi *slack.Client
+	search db.Search
 )
 
 var (
@@ -190,13 +191,14 @@ func (c *channel) fetchNewMessages() (err error) {
 	}
 
 	var history *slack.History
+	var messageHistory []db.Message
 	latestRetrieved := latestInDb
 
 	for {
 		params := slack.NewHistoryParameters()
 		params.Oldest = latestRetrieved
 		params.Inclusive = false
-		params.Count = 200
+		params.Count = 100
 
 		if c.isPublic {
 			history, err = slackApi.GetChannelHistory(c.id, params)
@@ -210,23 +212,30 @@ func (c *channel) fetchNewMessages() (err error) {
 
 		messages := make([]db.Message, 0, len(history.Messages))
 		for _, newMessage := range history.Messages {
-			messages = append(messages, db.Message{newMessage.User, c.id, newMessage.Timestamp, newMessage.Text})
+			if newMessage.User == botId {
+				// Ignore any messages from self
+				continue
+			}
+
+			messages = append(messages, db.Message{Sender: newMessage.User, Channel: c.id, SendTime: newMessage.Timestamp, Message: newMessage.Text})
 
 			if newMessage.Timestamp > latestRetrieved {
 				latestRetrieved = newMessage.Timestamp
 			}
 		}
-		if err := db.AddMessages(messages); err != nil {
-			fmt.Println(err)
-			return err
-		}
-
-		fmt.Printf("%d messages added from channel %q\n", len(messages), c.id)
+		messageHistory = append(messageHistory, messages...)
 
 		if !history.HasMore {
 			break
 		}
 	}
+
+	if err := db.AddMessages(messageHistory); err != nil {
+		fmt.Println(err)
+		return err
+	}
+
+	fmt.Printf("%d messages added from channel %q\n", len(messageHistory), c.id)
 
 	return nil
 }
@@ -243,15 +252,85 @@ func (c *channel) getLatestMessageId() (string, error) {
 	return db.GetLatestMessageTime(c.id)
 }
 
+func resolveUserMapping() error {
+	var users []slack.User
+
+	fmt.Println("Resolving user mapping...")
+	users, err := slackApi.GetUsers()
+
+	if err != nil {
+		return err
+	}
+
+	for _, user := range users {
+		if _, ok := userIdNameMap[user.ID]; !ok {
+			userIdNameMap[user.ID] = user.Name
+		}
+
+		if user.Name == getBotName() {
+			botId = user.ID
+			fmt.Printf("Bot id: %s\n", botId)
+		}
+	}
+
+	for id := range userIdNameMap {
+		exists := false
+		for _, user := range users {
+			if user.ID == id {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			delete(userIdNameMap, id)
+		}
+	}
+
+	if botId == "" {
+		return errors.New("Bot id not found")
+	}
+	fmt.Printf("Finished resolving user mapping. Total users found=%d\n", len(userIdNameMap))
+	return nil
+}
+
+func handleNewMessage(msgEv *slack.MessageEvent) error {
+	if msgEv.User == botId {
+		// Ignore any messages from self
+		return nil
+	}
+
+	fmt.Printf("New message received from user %q in channel %q: %q\n", msgEv.User, msgEv.Channel, msgEv.Text)
+
+	// Check if this is a new channel that we didn't know about. Fetch past messages if it is new.
+	if _, hasChannel := channelInfoMap.channels[msgEv.Channel]; !hasChannel {
+		channelInfoMap.update()
+	}
+
+	if chann, hasChannel := channelInfoMap.channels[msgEv.Channel]; !hasChannel {
+		return errors.New(fmt.Sprintf("Unable to get mapping for new channel %q", msgEv.Channel))
+	} else {
+		chann.fetchNewMessages()
+	}
+
+	return nil
+}
+
 func main() {
 	defer db.Close()
-
-	var err error
 
 	if ready, err := db.IsReady(); !ready {
 		fmt.Printf("Database not ready: %q\n", err)
 		os.Exit(1)
 	}
+
+	err := resolveUserMapping()
+	if err != nil {
+		fmt.Printf("Error resolving user mapping: %q\n", err)
+		os.Exit(1)
+	}
+
+	search.SetBotInfo(botId, userIdNameMap[botId])
+	search.SetUserMap(userIdNameMap)
 
 	channelInfoMap.init()
 	channelInfoMap.update()
@@ -260,41 +339,21 @@ func main() {
 		chann.fetchNewMessages()
 	}
 
-	var users []slack.User
-
-	users, err = slackApi.GetUsers()
-
-	if err != nil {
-		fmt.Printf("%s\n", err)
-	}
-
-	for _, user := range users {
-		if user.Name == getBotName() {
-			botId = user.ID
-			fmt.Printf("Bot id: %s\n", botId)
-		}
-	}
-
-	if botId == "" {
-		fmt.Println("Bot id not found")
-		os.Exit(1)
-	}
-
 	rtm := slackApi.NewRTM()
 
 	go rtm.ManageConnection()
 
 	// Start processing new messages from all channels that the bot belongs to
+	// Loop until interrupted
 	for msg := range rtm.IncomingEvents {
 		switch msgData := msg.Data.(type) {
 		case *slack.MessageEvent:
-			if msgData.User == botId {
-				// Ignore any messages from self
-				break
+			if err := handleNewMessage(msgData); err != nil {
+				fmt.Printf(fmt.Sprintf("Error handling new message: %s", err))
 			}
 
 			// Add new message to database
-			db.AddMessages([]db.Message{db.Message{msgData.User, msgData.Channel, msgData.Timestamp, msgData.Text}})
+			db.AddMessages([]db.Message{{msgData.User, msgData.Channel, msgData.Timestamp, msgData.Text}})
 			break
 		}
 	}

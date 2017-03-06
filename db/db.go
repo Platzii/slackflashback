@@ -174,6 +174,47 @@ func GetLatestMessageTime(channel string) (string, error) {
 	return maxTime, nil
 }
 
+func GetChannelList() ([]string, error) {
+	rows, err := dbConn.Query("SELECT DISTINCT channel FROM messages;")
+	if err != nil {
+		return nil, err
+	}
+
+	var channels []string
+	for rows.Next() {
+		var channelId string
+		err := rows.Scan(&channelId)
+		if err != nil {
+			return nil, err
+		}
+		channels = append(channels, channelId)
+	}
+
+	return channels, nil
+}
+
+func RemoveChannel(channelId string) error {
+	tx, err := dbConn.Begin()
+	if err != nil {
+		return err
+	}
+
+	stmt, err := tx.Prepare("DELETE FROM messages WHERE channel=?;")
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Stmt(stmt).Exec(channelId)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	tx.Commit()
+
+	return nil
+}
+
 // Close the database connection
 func Close() {
 	if dbConn != nil {
