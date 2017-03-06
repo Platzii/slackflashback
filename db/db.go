@@ -1,12 +1,12 @@
 package db
 
 import (
-	"fmt"
 	"bytes"
-	"database/sql"
 	"compress/zlib"
-	"github.com/mattn/go-sqlite3"
+	"database/sql"
 	"errors"
+	"fmt"
+	"github.com/mattn/go-sqlite3"
 )
 
 const schemaVersion = 1
@@ -25,22 +25,22 @@ END;
 `
 
 var (
-	dbConn *sql.DB
+	dbConn  *sql.DB
 	initErr error
 )
 
 type SearchResult struct {
-	sender string
-	channel string
+	sender   string
+	channel  string
 	sendTime string
-	message string
+	message  string
 }
 
 type Message struct {
-	Sender string
-	Channel string
+	Sender   string
+	Channel  string
 	SendTime string
-	Message string
+	Message  string
 }
 
 func init() {
@@ -117,9 +117,9 @@ func SearchMessage(sender string, channel string, query string) (results []Searc
 	stmtFragment := "SELECT sender, channel, send_time, decompress(message) FROM messages_idx WHERE channel=\"%s\" AND messages_idx MATCH '%s'"
 	var stmtStr string
 	if sender != "" {
-		stmtStr = fmt.Sprintf(stmtFragment + " AND sender=\"%s\";", channel, query, sender)
+		stmtStr = fmt.Sprintf(stmtFragment+" AND sender=\"%s\";", channel, query, sender)
 	} else {
-		stmtStr = fmt.Sprintf(stmtFragment + ";", channel, query)
+		stmtStr = fmt.Sprintf(stmtFragment+";", channel, query)
 	}
 
 	fmt.Println("SearchMessage: " + stmtStr)
@@ -187,7 +187,7 @@ func IsReady() (bool, error) {
 }
 
 // Apply zlib compression to message text
-func compressMessage(message string) ([]byte) {
+func compressMessage(message string) []byte {
 	var buf bytes.Buffer
 
 	if writer, err := zlib.NewWriterLevel(&buf, zlib.BestCompression); err != nil {

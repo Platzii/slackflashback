@@ -1,28 +1,28 @@
 package main
 
 import (
+	"earthgrazer.ca/slackflashback/db"
+	"errors"
+	"flag"
 	"fmt"
 	"github.com/nlopes/slack"
-	"earthgrazer.ca/slackflashback/db"
 	"os"
-	"flag"
 	"sync"
-	"errors"
 )
 
 // Configurable parameters
 var (
 	authToken *string
-	botName *string
+	botName   *string
 )
 
 var (
-	botId string
+	botId    string
 	slackApi *slack.Client
 )
 
 var (
-	userIdNameMap map[string]string = make(map[string]string)
+	userIdNameMap  map[string]string = make(map[string]string)
 	channelInfoMap channelMap
 )
 
@@ -55,7 +55,8 @@ func (m *channelMap) init() {
 }
 
 func (m *channelMap) update() error {
-	m.Lock(); defer m.Unlock()
+	m.Lock()
+	defer m.Unlock()
 
 	updatedChannels := []string{}
 
@@ -72,9 +73,9 @@ func (m *channelMap) update() error {
 		_, exists := m.channels[group.ID]
 
 		if !exists {
-			m.channels[group.ID] = channel {
-				id: group.ID,
-				name: group.Name,
+			m.channels[group.ID] = channel{
+				id:       group.ID,
+				name:     group.Name,
 				isPublic: false,
 			}
 			fmt.Printf("Added private channel [Name=%q,ID=%q]\n", group.Name, group.ID)
@@ -96,9 +97,9 @@ func (m *channelMap) update() error {
 		_, exists := m.channels[chann.ID]
 
 		if !exists {
-			m.channels[chann.ID] = channel {
-				id: chann.ID,
-				name: chann.Name,
+			m.channels[chann.ID] = channel{
+				id:       chann.ID,
+				name:     chann.Name,
 				isPublic: true,
 			}
 			fmt.Printf("Added public channel [Name=%q,ID=%q]\n", chann.Name, chann.ID)
@@ -126,7 +127,8 @@ func (m *channelMap) update() error {
 }
 
 func (m channelMap) getChannelName(id string) (string, error) {
-	m.Lock(); defer m.Unlock()
+	m.Lock()
+	defer m.Unlock()
 
 	if channel, exists := m.channels[id]; !exists {
 		return "", errors.New("Channel name not found")
@@ -136,14 +138,15 @@ func (m channelMap) getChannelName(id string) (string, error) {
 }
 
 type channel struct {
-	id string
-	name string
+	id       string
+	name     string
 	isPublic bool
 	sync.Mutex
 }
 
 func (c *channel) fetchNewMessages() (err error) {
-	c.Lock(); defer c.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
 	fmt.Println("Fetching messages for channel " + c.id)
 
@@ -229,12 +232,14 @@ func (c *channel) fetchNewMessages() (err error) {
 }
 
 func (c *channel) updateEditedMessage(origSendTime string, message string) {
-	c.Lock(); defer c.Unlock()
+	c.Lock()
+	defer c.Unlock()
 	// TODO implementation
 }
 
 func (c *channel) getLatestMessageId() (string, error) {
-	c.Lock(); defer c.Unlock()
+	c.Lock()
+	defer c.Unlock()
 	return db.GetLatestMessageTime(c.id)
 }
 
