@@ -11,7 +11,7 @@ import (
 
 const schemaVersion = 1
 const dbSchema string = `
-CREATE TABLE IF NOT EXISTS messages (sender TEXT NOT NULL, send_time INTEGER NOT NULL, channel TEXT NOT NULL, message BLOB);
+CREATE TABLE IF NOT EXISTS messages (sender TEXT NOT NULL, send_time TEXT NOT NULL, channel TEXT NOT NULL, message BLOB, PRIMARY KEY(send_time, channel));
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_idx USING fts5 (content=messages, content_rowid=rowid, sender UNINDEXED, send_time UNINDEXED, channel UNINDEXED, message);
 
 -- Triggers to keep the FTS index up to date.
@@ -32,8 +32,15 @@ var (
 type SearchResult struct {
 	sender string
 	channel string
-	sendTime int
+	sendTime string
 	message string
+}
+
+type Message struct {
+	Sender string
+	Channel string
+	SendTime string
+	Message string
 }
 
 func init() {
@@ -72,21 +79,33 @@ func init() {
 }
 
 // Add a message to database
-func AddMessage(sender string, channel string, sendTime int, message string) (err error) {
+func AddMessages(messages []Message) (err error) {
 	if initErr != nil {
 		return initErr
 	}
 
-	stmtStr := fmt.Sprintf("INSERT INTO messages (sender, channel, send_time, message) VALUES (\"%s\", \"%s\", %d, \"%s\");", sender, channel, sendTime, message)
-	fmt.Println("AddMessage: " + stmtStr)
+	tx, err := dbConn.Begin()
 
-	if stmt, err := dbConn.Prepare(stmtStr); err != nil {
+	if err != nil {
 		return err
-	} else {
-		_, err = stmt.Exec()
 	}
 
-	return err
+	for _, msg := range messages {
+		stmt, err := dbConn.Prepare("INSERT INTO messages (sender, channel, send_time, message) VALUES (?, ?, ?, ?);")
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+		_, err = stmt.Exec(msg.Sender, msg.Channel, msg.SendTime, msg.Message)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	tx.Commit()
+
+	return nil
 }
 
 // Search for messages matching the given parameters
@@ -118,7 +137,7 @@ func SearchMessage(sender string, channel string, query string) (results []Searc
 		for rows.Next() {
 			var senderRes string
 			var channelRes string
-			var sendTimeRes int
+			var sendTimeRes string
 			var messageRes string
 
 			if err := rows.Scan(&senderRes, &channelRes, &sendTimeRes, &messageRes); err != nil {
@@ -130,6 +149,29 @@ func SearchMessage(sender string, channel string, query string) (results []Searc
 	}
 
 	return results, nil
+}
+
+func GetLatestMessageTime(channel string) (string, error) {
+	stmtStr := fmt.Sprintf("SELECT MAX(send_time) FROM messages WHERE channel=\"%s\";", channel)
+
+	stmt, err := dbConn.Prepare(stmtStr)
+	if err != nil {
+		return "", err
+	}
+
+	rows, err := stmt.Query()
+	if err != nil {
+		return "", err
+	}
+
+	defer rows.Close()
+
+	var maxTime string = ""
+	for rows.Next() {
+		rows.Scan(&maxTime)
+	}
+
+	return maxTime, nil
 }
 
 // Close the database connection
@@ -208,8 +250,7 @@ func getSchemaVersion() int {
 	}
 
 	if maxVersion < schemaVersion || count == 0 {
-		stmt = fmt.Sprintf("INSERT INTO versions VALUES (%d)", schemaVersion)
-		if _, err = dbConn.Exec(stmt); err != nil {
+		if _, err = dbConn.Exec("INSERT INTO versions VALUES (?)", schemaVersion); err != nil {
 			return -1
 		}
 		return schemaVersion
