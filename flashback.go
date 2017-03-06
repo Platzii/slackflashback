@@ -177,7 +177,7 @@ func (c *channel) fetchNewMessages() (err error) {
 
 	if latestInDb == "" {
 		// Set latest time to beginning of time if there are no messages in db
-		latestInDb = "0"
+		latestInDb = "1"
 	}
 
 	if latestInDb >= latestMessage.Timestamp {
@@ -193,8 +193,7 @@ func (c *channel) fetchNewMessages() (err error) {
 		params := slack.NewHistoryParameters()
 		params.Oldest = latestRetrieved
 		params.Inclusive = false
-		params.Count = 10
-		fmt.Printf("latestRetrieved: %s\n", latestRetrieved)
+		params.Count = 200
 
 		if c.isPublic {
 			history, err = slackApi.GetChannelHistory(c.id, params)
@@ -205,8 +204,6 @@ func (c *channel) fetchNewMessages() (err error) {
 		if err != nil {
 			return err
 		}
-
-		fmt.Printf("Len: %d\n", len(history.Messages))
 
 		messages := make([]db.Message, 0, len(history.Messages))
 		for _, newMessage := range history.Messages {
@@ -257,8 +254,6 @@ func main() {
 	for _, chann := range channelInfoMap.channels {
 		chann.fetchNewMessages()
 	}
-	//channel := channelInfoMap.channels["G3CNTDT8X"]
-	//go channel.fetchNewMessages()
 
 	var users []slack.User
 

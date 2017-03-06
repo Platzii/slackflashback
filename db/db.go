@@ -96,7 +96,7 @@ func AddMessages(messages []Message) (err error) {
 			tx.Rollback()
 			return err
 		}
-		_, err = stmt.Exec(msg.Sender, msg.Channel, msg.SendTime, msg.Message)
+		_, err = tx.Stmt(stmt).Exec(msg.Sender, msg.Channel, msg.SendTime, msg.Message)
 		if err != nil {
 			tx.Rollback()
 			return err
