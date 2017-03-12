@@ -30,10 +30,7 @@ var (
 )
 
 type SearchResult struct {
-	sender   string
-	channel  string
-	sendTime string
-	message  string
+	Msg Message
 }
 
 type Message struct {
@@ -143,7 +140,7 @@ func SearchMessage(sender string, channel string, query string) (results []Searc
 			if err := rows.Scan(&senderRes, &channelRes, &sendTimeRes, &messageRes); err != nil {
 				return results, err
 			} else {
-				results = append(results, SearchResult{sender: senderRes, channel: channelRes, sendTime: sendTimeRes, message: messageRes})
+				results = append(results, SearchResult{Msg: Message{Sender: senderRes, Channel: channelRes, SendTime: sendTimeRes, Message: messageRes}})
 			}
 		}
 	}
@@ -172,47 +169,6 @@ func GetLatestMessageTime(channel string) (string, error) {
 	}
 
 	return maxTime, nil
-}
-
-func GetChannelList() ([]string, error) {
-	rows, err := dbConn.Query("SELECT DISTINCT channel FROM messages;")
-	if err != nil {
-		return nil, err
-	}
-
-	var channels []string
-	for rows.Next() {
-		var channelId string
-		err := rows.Scan(&channelId)
-		if err != nil {
-			return nil, err
-		}
-		channels = append(channels, channelId)
-	}
-
-	return channels, nil
-}
-
-func RemoveChannel(channelId string) error {
-	tx, err := dbConn.Begin()
-	if err != nil {
-		return err
-	}
-
-	stmt, err := tx.Prepare("DELETE FROM messages WHERE channel=?;")
-	if err != nil {
-		return err
-	}
-
-	_, err = tx.Stmt(stmt).Exec(channelId)
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	tx.Commit()
-
-	return nil
 }
 
 // Close the database connection
